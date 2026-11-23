@@ -1,0 +1,326 @@
+---
+title: "Diamonds, Women's Basketball, and Monte Carlo Integration Data Visualizations"
+author: "Olivia Tat"
+date: 11/18/2026
+format:
+  pdf:
+    number-sections: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+library(tidyverse)
+library(gt)
+library(patchwork)
+set.seed(123)
+```
+
+# Report Overview
+
+This report brings together four pieces of earlier work. First, we summarize the physical dimensions of round cut diamonds by color. Second, we look at free throw attempts in NCAA women's basketball. Third, we use Monte Carlo simulation to estimate a definite integral. Finally, we build and refine a graph to learn about diamond prices per carat by cut. All code appears in the Code Appendix at the end of the document.
+
+# Diamonds Table of Statistics
+
+The `diamonds` data come from the `{ggplot2}` package. Each row is one diamond. Here we describe the length (`x`), width (`y`), and depth (`z`) of the diamonds, in millimeters, broken down by color grade (D is the best color and J is the lowest of the grades shown). Each table reports the count, minimum, four quintile cut points (20th, 40th, 60th, and 80th percentiles), median, maximum, mean, and standard deviation.
+
+```{r}
+#| label: diamond-table-function
+makeDiamondTable <- function(variable) {
+  diamonds |>
+    group_by(color) |>
+    summarise(
+      Count  = n(),
+      Min    = min({{ variable }}),
+      Q1     = quantile({{ variable }}, 0.20),
+      Q2     = quantile({{ variable }}, 0.40),
+      Median = median({{ variable }}),
+      Q3     = quantile({{ variable }}, 0.60),
+      Q4     = quantile({{ variable }}, 0.80),
+      Max    = max({{ variable }}),
+      Mean   = mean({{ variable }}),
+      SD     = sd({{ variable }})
+    ) |>
+    gt() |>
+    fmt_integer(columns = Count) |>
+    fmt_number(columns = Min:SD, decimals = 2) |>
+    cols_label(
+      color = "Color",
+      Q1 = "1st Quintile",
+      Q2 = "2nd Quintile",
+      Q3 = "3rd Quintile",
+      Q4 = "4th Quintile"
+    ) |>
+    opt_table_outline()
+}
+```
+
+## Length
+
+```{r}
+#| label: tbl-length
+#| tbl-cap: "Statistics for Diamond Length in mm by Color"
+makeDiamondTable(x)
+```
+
+[TODO: Analysis of @tbl-length. Compare medians and spreads across colors D through J. Do the typical lengths change with color? Which colors have the most variation (SD)? Note any gap between the mean and median, and what the minimum and maximum suggest. Check for impossible values such as a length of 0.]
+
+## Width
+
+```{r}
+#| label: tbl-width
+#| tbl-cap: "Statistics for Diamond Width in mm by Color"
+makeDiamondTable(y)
+```
+
+[TODO: Analysis of @tbl-width. The maximum width is much larger than the other quintiles for at least one color, so discuss how those extreme values affect the mean and SD compared with the median.]
+
+## Depth
+
+```{r}
+#| label: tbl-depth
+#| tbl-cap: "Statistics for Diamond Depth in mm by Color"
+makeDiamondTable(z)
+```
+
+[TODO: Analysis of @tbl-depth. Discuss the same ideas as above, and compare the three tables with each other (@tbl-length, @tbl-width, and @tbl-depth).]
+
+# Big 10 Academic Alliance-Love Data Week
+
+\[TODO: Add one or two sentences of context: what the data are (NCAA women's basketball team box scores), where they came from, and what question you are asking about free throws.\]
+
+```{r}
+#| label: btaa-data
+teamBox <- read_csv("team_box.csv")
+
+throwsByYear <- teamBox |>
+  group_by(year = season) |>
+  summarize(
+    freeThrowsAttempted = sum(free_throws_attempted, na.rm = TRUE),
+    games = n_distinct(game_id),
+    perGame = freeThrowsAttempted / games
+  )
+```
+
+```{r}
+#| label: fig-btaa
+#| fig-cap: "Total Free Throws Attempted in NCAA Women's Basketball by Season"
+#| fig-alt: "Bar chart with season year on the horizontal axis and total free throws attempted on the vertical axis."
+ggplot(throwsByYear, aes(x = year, y = freeThrowsAttempted)) +
+  geom_col(fill = "blue") +
+  scale_y_continuous(labels = scales::label_comma()) +
+  labs(x = "Season year", y = "Free throws attempted") +
+  theme_minimal()
+```
+
+@fig-btaa showcases the total free throws attempted changed in NCAA women’s basketball from the years 2006 to 2026. The bars are shorter from 2006 to 2013, but climb a in 2014 to 2016, and then jumps exponentially to around 180,000 in 2017, where they stay until 2021. there is a significant drop to about 128,000 in 2021, the totals rise again and reach their highest point in 2026, at just over 200,000. The 2021 dip we see would make sense due to covid 19 causing a shortened seasons and canceled games, so there were fewer chances to shoot free throws. There is likely an underlying confounding variable at play given the much fewer number of free throws from 2006-2013, which is the number of games recorded each season, and comparing free throws per game would give a fairer picture.
+
+# Monte Carlo Numerical Integration
+
+Numerical integration is the process of evaluating a definite integral to get a number. Calculus classes usually teach deterministic methods such as Riemann sums or the Trapezoidal Rule. Monte Carlo integration is a stochastic alternative that relies on random sampling.
+
+For this report, the function is the chi-square density with 5 degrees of freedom, integrated from 0 to 20. On this interval the density never exceeds about 0.154, so the curve fits inside a rectangle with width 20, height 0.16, and area 20 × 0.16 = 3.2. The method works as follows:
+
+1.  Draw *n* x-coordinates uniformly from 0 to 20 and *n* y-coordinates uniformly from 0 to 0.16, and join them into ordered pairs.
+2.  Classify each point as on or below the curve, or above it.
+3.  Find the proportion *p* of points on or below the curve.
+4.  Multiply *p* by the area of the rectangle (3.2) to estimate the integral.
+
+Because the points are random, results change from one run to the next. We set a seed (123) so that this report is reproducible.
+
+```{r}
+#| label: mc-setup
+xMin <- 0
+xMax <- 20
+yMin <- 0
+yMax <- 0.16
+boxArea <- (xMax - xMin) * (yMax - yMin)
+trueValue <- pchisq(xMax, df = 5) - pchisq(xMin, df = 5)
+
+genPoints <- function(n) {
+  data.frame(
+    x = runif(n, min = xMin, max = xMax),
+    y = runif(n, min = yMin, max = yMax)
+  )
+}
+
+runMonteCarlo <- function(n) {
+  pts <- genPoints(n) |>
+    mutate(
+      curveHeight = dchisq(x, df = 5),
+      position = if_else(y <= curveHeight, "On/Below", "Above")
+    )
+  list(
+    n = n,
+    points = pts,
+    estimate = mean(pts$position == "On/Below") * boxArea
+  )
+}
+
+makePlot <- function(result) {
+  ggplot(result$points, aes(x = x, y = y, color = position)) +
+    geom_point(size = 1, alpha = 0.7) +
+    stat_function(
+      fun = dchisq,
+      args = list(df = 5),
+      xlim = c(xMin, xMax),
+      color = "black",
+      linewidth = 1
+    ) +
+    scale_color_manual(values = c("On/Below" = "#0072B2", "Above" = "#D55E00")) +
+    coord_cartesian(xlim = c(xMin, xMax), ylim = c(yMin, yMax)) +
+    labs(
+      title = paste0("n = ", format(result$n, big.mark = ","),
+                     "; estimate = ", round(result$estimate, 4)),
+      x = "x",
+      y = "Density",
+      color = "Point location"
+    ) +
+    theme_minimal() +
+    theme(plot.title = element_text(size = 10))
+}
+
+results <- lapply(c(10, 100, 1000, 10000), runMonteCarlo)
+```
+
+```{r}
+#| label: fig-mc
+#| fig-cap: "Monte Carlo Integration of the Chi-Square (df = 5) Density from 0 to 20 with 10, 100, 1,000, and 10,000 Points"
+#| fig-alt: "Four scatterplots, each with a black chi-square density curve. Random points on or below the curve are blue and points above it are orange. The panels use 10, 100, 1,000, and 10,000 points, and the blue points fill the region under the curve more completely as the number of points grows."
+#| fig-width: 8
+#| fig-height: 6
+wrap_plots(lapply(results, makePlot), ncol = 2) +
+  plot_layout(guides = "collect")
+```
+
+```{r}
+#| label: tbl-mc
+#| tbl-cap: "Monte Carlo Estimates Compared with the True Integral from 0 to 20"
+tibble(
+  n = sapply(results, `[[`, "n"),
+  Estimate = sapply(results, `[[`, "estimate"),
+  `Absolute Error` = abs(Estimate - trueValue)
+) |>
+  gt() |>
+  fmt_integer(columns = n) |>
+  fmt_number(columns = c(Estimate, `Absolute Error`), decimals = 4)
+```
+
+## What the small multiple shows
+
+@fig-mc shows how the estimate improves as more points are used, and @tbl-mc lists the estimates. With 10 points, [TODO: check @tbl-mc. In the original run, no points landed below the curve, so the estimate was 0, which is far off]. With 100 points, a scattered group of blue points appears under the curve. By 1,000 points, the blue points trace the shape of the curve, and at 10,000 points they fill the region beneath it almost completely. The estimates in @tbl-mc move toward 1 as *n* grows, although they are not guaranteed to improve at every step, and a different seed would give different numbers.
+
+The exact answer over all x from 0 to infinity is 1, because the function is a probability density function and the total area under any density is 1. Over our interval from 0 to 20, the exact value is `r round(trueValue, 4)`, slightly less than 1 because a small tail of the density lies beyond x = 20. The curve is nearly flat at 0 by x = 20, so cutting the interval there loses almost no area. The plot cannot distinguish `r round(trueValue, 4)` from 1, but it shows the estimates settling near 1, and the probability density property tells us the exact value.
+
+# Understanding Diamonds
+
+Our goal for this section was to build a graph that helps us learn something about round cut diamonds, using the plan, create, improve, and polish process.
+
+## Initial Plan and Plot
+
+My initial goal was to see the relationship between the carat weight and the price of the diamonds. \[TODO: paste your initial plan text here.\]
+
+```{r}
+#| label: fig-diamonds-initial
+#| fig-cap: "Initial Scatterplot of Diamond Price by Carat"
+#| fig-alt: "Scatterplot with carat weight on the horizontal axis and price on the vertical axis. Price rises steeply as carat increases, and the points overlap heavily, especially for small diamonds."
+ggplot(
+  data = diamonds,
+  mapping = aes(x = carat, y = price)
+) +
+  geom_point(color = "#555555")
+```
+
+@fig-diamonds-initial uses the first working version of my code. My first attempt did not display a usable plot because of the code's label layer and unfinished color-scale lines (the original code appears in the Code Appendix). \[TODO: edit this sentence to say what you actually observed and what fixed it.\] Once the points displayed, the scatterplot was cluttered and hard to read, because thousands of points overlap. It showed that price rises with carat, but it did not help me compare cuts, so I revised my goal.
+
+## Improvement and Polishing Plan
+
+\[TODO: paste or edit your plan. Suggested content based on your notes:\]
+
+**Code.** Keep the data setup and the `ggplot()` structure, but replace `geom_point()` with `geom_boxplot()`. Map `x = cut`, calculate price per carat as `price / carat` for the y-axis, remove unneeded library calls, and add comments and a header.
+
+**Plot.** Change the goal to comparing price per carat across cuts. Use the title "Summary of Prices per Carat for Each Cut of Diamond", label the axes with units, format the y-axis as dollars, remove the redundant legend, lighten the outliers, and keep a colorblind-friendly palette.
+
+## Final Plot
+
+```{r}
+#| label: fig-diamonds-final
+#| fig-cap: "Summary of Prices per Carat for Each Cut of Diamond"
+#| fig-alt: "Box-and-whisker plots of price per carat for five diamond cuts: Fair, Good, Very Good, Premium, and Ideal. The medians are close together and sit near the bottom of each box. Upper whiskers are much longer than lower whiskers, and many light outlier points extend above the boxes for every cut."
+diamondsPPC <- diamonds |>
+  mutate(pricePerCarat = price / carat)
+
+ggplot(
+  data = diamondsPPC,
+  mapping = aes(x = cut, y = pricePerCarat, fill = cut)
+) +
+  geom_boxplot(
+    outlier.alpha = 0.3,
+    outlier.size = 0.8,
+    show.legend = FALSE
+  ) +
+  scale_y_continuous(labels = scales::label_dollar()) +
+  labs(
+    title = "Summary of Prices per Carat for Each Cut of Diamond",
+    x = "Cut of the Diamond",
+    y = "Price per carat (USD)"
+  ) +
+  theme_minimal()
+```
+
+### Long Description
+
+[TODO: Rewrite your long description from the final plot. Use one title, and check the y-axis range, median values, outlier heights, and colors against the rendered @fig-diamonds-final. The legend has been removed, so do not describe one.]
+
+## What We Can Learn from the Plot
+
+\[TODO: Check the medians against your data first, for example with `diamondsPPC |> group_by(cut) |> summarize(median(pricePerCarat))`, then edit this draft.\]
+
+@fig-diamonds-final lets a reader compare how price per carat is distributed across the five cuts. Box plots encode values by position along a common scale, which is among the most accurate elementary perceptual tasks, so it is easy to see that the medians are close together rather than rising from Fair to Ideal. This is counterintuitive: a better cut does not by itself mean a higher price per carat. In every cut, the median sits near the bottom of the box and the upper whisker is much longer than the lower one, which indicates positive skew. Most diamonds are priced at the lower end, while a smaller group stretches to much higher prices. Every cut also has many high outliers. Because price is already divided by carat, these outliers are probably not explained by size alone, so another variable, such as clarity or color, is likely involved. Color and clarity vary within every cut, so they may confound the comparison between cuts. The plot cannot confirm this, but it suggests variables to examine next. Design choices support the reading: removing the redundant legend and lightening the outliers raises the data-ink ratio (Tufte), and the dark median line stays salient (Kosslyn), keeping attention on the comparison across cuts.
+
+# Appendix: Generative AI Usage {.unnumbered}
+
+\[PLACEHOLDER: Describe any generative AI tools used for this assignment, what you used them for, and how you checked or changed the output. If you used none, say so.\]
+
+# Appendix: Code {.unnumbered}
+
+## Original Initial Code (As First Attempted) {.unnumbered}
+
+This is the first version of the diamonds code, shown unchanged. It is not run here, because labeling every one of the roughly 54,000 points can keep the plot from displaying.
+
+``` r
+# Initial Attempt of Creating a plot for Diamonds data
+# Coder: Olivia Tat
+# GOAL: Create a graph of our diamonds data to see the relationship between the
+#       carat to the price of the diamonds data
+
+library(ggrepel)
+library(ggplot2)
+data(diamonds)
+library(tidyverse)
+
+#---Graph of the diamonds data (simple popint plot to compare carat to price)
+ggplot(
+  data = diamonds,
+  mapping = aes(
+    x = carat, 
+    y = price
+  )
+) + geom_point(color = "#555555")+
+ggrepel::geom_label_repel(mapping = aes(label = clarity))
+scale_colror_(
+  #95C8D8
+)
+```
+
+## Code Used in This Document {.unnumbered}
+
+```{r}
+#| label: code-appendix
+#| ref.label: !expr knitr::all_labels(label != "code-appendix")
+#| echo: true
+#| eval: false
+```
