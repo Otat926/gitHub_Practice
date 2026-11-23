@@ -21,6 +21,4 @@ Branches: main branch holds finished work while dev_tat is where changes are mad
 then merged into main through pull requests.
 
 #### Contact
-Olivia Tat
-GitHub: Otat926
-Email: oct5030@psu.edu
+Olivia Tat | GitHub: Otat926 | Email: oct5030@psu.edu
