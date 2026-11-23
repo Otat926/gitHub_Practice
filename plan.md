@@ -23,7 +23,6 @@
 ### Needs
 - R packages: tidyverse, knitr, kableExtra
 - The team_box.csv file and the diamonds data
-- A PDF engine (LaTeX or Typst) for rendering
 
 ### Steps
 1. Build the three diamond statistics tables
