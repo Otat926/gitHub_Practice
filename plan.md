@@ -24,6 +24,7 @@
 - R packages: tidyverse, knitr, kableExtra
 - The team_box.csv file and the diamonds data
 
+
 ### Steps
 1. Build the three diamond statistics tables
 2. Make the free throws bar chart
