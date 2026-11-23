@@ -7,7 +7,7 @@ This repository holds my work for HW #4.3. The files are labeled and displayed a
 1. Descriptive statistics for the length, width, and depth of round cut
    diamonds, grouped by color
 2. A bar chart of free throws attempted per season in NCAA women's basketball
-3. A Monte Carlo estimate of a chi-square (df = 5) integral from 0 to 20
+3. A Monte Carlo estimate of an integral from 0 to 20
 4. A plan, create, improve, and polish process for a graph of diamond price
    per carat by cut
 
